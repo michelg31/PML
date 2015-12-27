@@ -1,0 +1,117 @@
+---
+title: "Machine Learning for Human Activity Recognition"
+output: html_document
+---
+Written by michelg31 - Sunday, December 27, 2015
+
+## SUMMARY
+
+### Study Background
+This document is part of the training Course "Paractical Machine Learning" (from Roger D. Peng, Jeff Leek, and Brian Caffo) that can be found on www.coursera.org.
+
+### Assignment
+Human Activity Recognition is a field where you try to evaluate activities from series of data captured with wearbale sensors. 
+Goal of the assignmenet is to define a HAR model to quantify how well specific activities are done.
+
+### Modelisation results
+The modelisation has been built from data collected by Groupware@LES and bundled under "Weight Lifting Exercises Dataset". It consists of a data collected on 6 young people asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions (one correct and 4 misdone). Read more information [here](http://groupware.les.inf.puc-rio.br/har)
+
+Random Forest modelisation and cross-validation (within training set) approach leads to a very accurate model with a Out-Of-Bag error rate close to 0.67% and an cross-validated accuracy of about 99.44%
+
+</BR>
+
+## DATA EXPLORATION
+
+### Data Cleaning
+First, we load data and then check consistency around NA's, empty cells and columns names.Then we clean data from NA's and empty columns.
+As a result, only 60 columns out of 160 are kept. We also take out data around participants and time (columns 1 to 7).
+
+Code to do all these is below :
+```{r results='hide', message=FALSE, warning=FALSE}
+## checking file and loading data
+fileOK <- TRUE
+dir <- getwd()
+fileNames =c("pml-training.csv", "pml-testing.csv")
+for (i in 1:length(fileNames)) if (!any(list.files()==fileNames[i])) fileOK <- FALSE
+if (!fileOK) return(print(paste("Required Files not found in working directory ('",dir,"') ",sep="")))
+
+training <- read.csv(fileNames[1], stringsAsFactors=FALSE)
+test <- read.csv(fileNames[2],stringsAsFactors=FALSE)
+
+## checking data
+dim(training);summary(training);dim(test);summary(test) ## ckeck data structure
+sum(!names(training)==names(test))## check columns names are identicals
+dim(training[training$new_window=="no",]);colSums(is.na(training[training$new_window=="yes",]));dim(test[test$new_window=="yes",]) ## NAs analysis
+
+## cleaning data
+training <- training[training$new_window=="no",colSums(is.na(training))==0];test <- test[test$new_window=="no",colSums(is.na(test))==0]  ## eliminate NA's
+training <- training[,colSums(training[training$new_window=="no",]=="")!=dim(training[training$new_window=="no",])[1],];test <- test[,colSums(test[test$new_window=="no",]=="")!=dim(test[test$new_window=="no",])[1],] ## eliminate unuseful columns
+training <- training[,-(1:7)];test <- test[,-(1:7)] ## take out participant and time independant
+
+## factor classe
+library(dplyr)
+training <- mutate(training, classe=factor(classe))
+```
+
+
+### Plot exploring
+Once data has been cleaned, we can take a look on variance between Classe and other variables :
+```{r message=FALSE, warning=FALSE}
+library(caret)
+featurePlot(x=training[,1:I(dim(training)[2]-1)], y=training$classe, plot="box", ylim=c(-500,500))
+
+## more details can been seen with followng command :
+## featurePlot(x=training[,grepl("belt",names(training))], y=training$classe, plot="box")
+## featurePlot(x=training[,grepl("_arm",names(training))], y=training$classe, plot="box")
+## featurePlot(x=training[,grepl("dumbbell",names(training))], y=training$classe, plot="box")
+## featurePlot(x=training[,grepl("forearm",names(training))], y=training$classe, plot="box")
+```
+
+
+</BR>
+
+## MODELISATION
+
+Since we get enough data, we are going to cross-validate our model, so we need to split training data in a trainingModel dataset to build the model and a trainingValidation dataset to check it's accuracy level on other datasets.
+
+```{r}
+set.seed(2567)
+train <- createDataPartition(y = training$classe, p = 0.7, list = FALSE)
+trainingModel <- training[train, ]
+trainingValidation <- training[-train,]
+```
+
+
+From data exploration, modelisation through CART seems more appropriate than linear regression.
+And, random forest approach seems more appropriate than boosting or bagging.
+To validate the model, OBB error rate should be lower than 1% and croos-validation accuracy should be above 95%.
+
+### Model Buildng
+
+```{r, message=FALSE, warning=FALSE}
+library(randomForest)
+set.seed(3234)
+model <- randomForest(classe ~., data=trainingModel, ntree=100)
+model
+```
+
+Error rate is 0.67% which is quite good.
+
+
+### Model cross-validation
+
+```{r, }
+validationPrediction <- predict(model, trainingValidation)
+confusionMatrix(trainingValidation$classe, validationPrediction)
+```
+
+Accuracy level has a [99,22% -  99,62%] confidence interval which is also excellent.
+Model is validated
+
+</BR>
+
+## MODEL PREDICTION
+```{r, }
+testPrediction <- predict(model, test)
+testPrediction
+```
